@@ -15,13 +15,14 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{VirtAddr, MapPermission};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
-// use crate::timer::get_time_ms;
+use crate::timer::get_time_ms;
 
 pub use context::TaskContext;
 
@@ -81,6 +82,13 @@ impl TaskManager {
     fn run_first_task(&self) -> ! {
         let mut inner = self.inner.exclusive_access();
         let next_task = &mut inner.tasks[0];
+        
+        let current_task_control_block = &mut next_task.task_info_helper;
+        if let false = current_task_control_block.processed {
+            current_task_control_block.task_start_time = get_time_ms();
+            current_task_control_block.processed = true;
+        } 
+        
         next_task.task_status = TaskStatus::Running;
         let next_task_cx_ptr = &next_task.task_cx as *const TaskContext;
         drop(inner);
@@ -143,11 +151,11 @@ impl TaskManager {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
 
-            // let current_task_control_block = &mut inner.tasks[current].task_info_helper;
-            // if let false = current_task_control_block.processed {
-            //     current_task_control_block.task_start_time = get_time_ms();
-            //     current_task_control_block.processed = true;
-            // } 
+            let current_task_control_block = &mut inner.tasks[current].task_info_helper;
+            if let false = current_task_control_block.processed {
+                current_task_control_block.task_start_time = get_time_ms();
+                current_task_control_block.processed = true;
+            } 
 
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
@@ -176,6 +184,39 @@ impl TaskManager {
         let current_index = inner.current_task;
         inner.tasks[current_index].task_info_helper.syscall_times[id] += 1;
         drop(inner)
+    }
+
+    fn map_memory_for_task(&self, start: VirtAddr, end: VirtAddr, port: usize) -> bool {
+        let mut inner = self.inner.exclusive_access();
+        let current_index = inner.current_task;
+        let memory_set = &mut inner.tasks[current_index].memory_set;
+
+        let mapped = memory_set.is_mapped(start, end);
+
+        debug!("{:?}, {mapped:?}", !start.aligned());
+        if !start.aligned() || port & !0x7 != 0 || port & 0x7 == 0 || mapped {
+            drop(inner);
+            false
+        } else {
+            let permission = MapPermission::from_bits((port << 1) as u8).unwrap() | MapPermission::U;
+            memory_set.insert_framed_area(start, end, permission);
+            drop(inner);
+            true
+        }
+    }
+
+    fn unmap_memory_for_task(&self, start: VirtAddr, end: VirtAddr) -> bool {
+        let mut inner = self.inner.exclusive_access();
+        let current_index = inner.current_task;
+        let memory_set = &mut inner.tasks[current_index].memory_set;
+
+        if start.aligned() && memory_set.remove_framed_area(start, end) {
+            drop(inner);
+            true
+        } else {
+            drop(inner);
+            false
+        }
     }
 }
 
@@ -235,4 +276,14 @@ pub fn get_current_cb_task_info() -> TaskInfoHelper{
 /// add one times when call a system call 
 pub fn add_times_of_syscall(id: usize) {
     TASK_MANAGER.add_times_of_syscall(id);
+}
+
+/// map_memory_for_task
+pub fn map_memory_for_task(start: usize, end: usize, port: usize) -> bool {
+    TASK_MANAGER.map_memory_for_task(start.into(), end.into(), port)
+}
+
+/// unmap
+pub fn unmap_memory_for_task(start: usize, end: usize) -> bool {
+    TASK_MANAGER.unmap_memory_for_task(start.into(), end.into())
 }

@@ -2,7 +2,13 @@
 use crate::{
     config::MAX_SYSCALL_NUM,
     task::{
-        change_program_brk, exit_current_and_run_next, suspend_current_and_run_next, TaskStatus, current_user_token,
+        change_program_brk, 
+        exit_current_and_run_next, 
+        suspend_current_and_run_next, 
+        TaskStatus, 
+        current_user_token,
+        map_memory_for_task,
+        unmap_memory_for_task,
     },
     timer::{get_time_us, get_time_ms},
     mm::translate_pointer_mut,
@@ -47,8 +53,8 @@ pub fn sys_yield() -> isize {
 pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
-    let ppn = translate_pointer_mut(current_user_token(), ts);
-    *ppn = TimeVal {
+    let pa = translate_pointer_mut(current_user_token(), ts);
+    *pa = TimeVal {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
     };
@@ -60,9 +66,10 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
 /// HINT: What if [`TaskInfo`] is splitted by two pages ?
 pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
     trace!("kernel: sys_task_info");
+    debug!("here!");
     let current = get_current_cb_task_info();
-    let ppn = translate_pointer_mut(current_user_token(), ti);
-    *ppn = TaskInfo {
+    let pa = translate_pointer_mut(current_user_token(), ti);
+    *pa = TaskInfo {
         status: TaskStatus::Running,
         syscall_times: current.syscall_times,
         time: get_time_ms() - current.task_start_time,
@@ -71,15 +78,23 @@ pub fn sys_task_info(ti: *mut TaskInfo) -> isize {
 }
 
 // YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+pub fn sys_mmap(start: usize, len: usize, port: usize) -> isize {
     trace!("kernel: sys_mmap NOT IMPLEMENTED YET!");
-    -1
+    if map_memory_for_task(start, start + len, port) {
+        0
+    } else {
+        -1
+    }
 }
 
 // YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
+pub fn sys_munmap(start: usize, len: usize) -> isize {
     trace!("kernel: sys_munmap NOT IMPLEMENTED YET!");
-    -1
+    if unmap_memory_for_task(start, start + len) {
+        0
+    } else {
+        -1
+    }
 }
 /// change data segment size
 pub fn sys_sbrk(size: i32) -> isize {
