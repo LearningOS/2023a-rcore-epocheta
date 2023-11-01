@@ -50,11 +50,13 @@ impl Debug for PhysPageNum {
 
 impl From<usize> for PhysAddr {
     fn from(v: usize) -> Self {
+        // 只使得低 56 位有效
         Self(v & ((1 << PA_WIDTH_SV39) - 1))
     }
 }
 impl From<usize> for PhysPageNum {
     fn from(v: usize) -> Self {
+        // 低 44 位有效
         Self(v & ((1 << PPN_WIDTH_SV39) - 1))
     }
 }
@@ -136,6 +138,7 @@ impl PhysAddr {
     }
     /// Get the page offset of physical address
     pub fn page_offset(&self) -> usize {
+        // 取 self.0 的低 12 位
         self.0 & (PAGE_SIZE - 1)
     }
     /// Check if the physical address is aligned by page size
@@ -151,6 +154,7 @@ impl From<PhysAddr> for PhysPageNum {
 }
 impl From<PhysPageNum> for PhysAddr {
     fn from(v: PhysPageNum) -> Self {
+        // 物理地址 [55, 12] 为页号
         Self(v.0 << PAGE_SIZE_BITS)
     }
 }

@@ -21,8 +21,11 @@ use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
+// use crate::timer::get_time_ms;
 
 pub use context::TaskContext;
+
+use self::task::TaskInfoHelper;
 
 /// The task manager, where all the tasks are managed.
 ///
@@ -139,6 +142,13 @@ impl TaskManager {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;
+
+            // let current_task_control_block = &mut inner.tasks[current].task_info_helper;
+            // if let false = current_task_control_block.processed {
+            //     current_task_control_block.task_start_time = get_time_ms();
+            //     current_task_control_block.processed = true;
+            // } 
+
             inner.tasks[next].task_status = TaskStatus::Running;
             inner.current_task = next;
             let current_task_cx_ptr = &mut inner.tasks[current].task_cx as *mut TaskContext;
@@ -152,6 +162,20 @@ impl TaskManager {
         } else {
             panic!("All applications completed!");
         }
+    }
+
+    fn get_current_cb_task_info(&self) -> TaskInfoHelper {
+        let inner = self.inner.exclusive_access();
+        let current = inner.tasks[inner.current_task].task_info_helper;
+        drop(inner);
+        current
+    }
+
+    fn add_times_of_syscall(&self, id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current_index = inner.current_task;
+        inner.tasks[current_index].task_info_helper.syscall_times[id] += 1;
+        drop(inner)
     }
 }
 
@@ -201,4 +225,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// get current task control block information for the taskinfo call
+pub fn get_current_cb_task_info() -> TaskInfoHelper{
+    TASK_MANAGER.get_current_cb_task_info()
+}
+
+/// add one times when call a system call 
+pub fn add_times_of_syscall(id: usize) {
+    TASK_MANAGER.add_times_of_syscall(id);
 }

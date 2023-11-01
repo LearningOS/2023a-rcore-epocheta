@@ -5,6 +5,7 @@ use crate::mm::{
     kernel_stack_position, MapPermission, MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE,
 };
 use crate::trap::{trap_handler, TrapContext};
+use crate::config::MAX_SYSCALL_NUM;
 
 /// The task control block (TCB) of a task.
 pub struct TaskControlBlock {
@@ -28,6 +29,9 @@ pub struct TaskControlBlock {
 
     /// Program break
     pub program_brk: usize,
+    
+    /// Task Info Helper
+    pub task_info_helper: TaskInfoHelper,
 }
 
 impl TaskControlBlock {
@@ -63,6 +67,11 @@ impl TaskControlBlock {
             base_size: user_sp,
             heap_bottom: user_sp,
             program_brk: user_sp,
+            task_info_helper: TaskInfoHelper {
+                task_start_time: 0,
+                syscall_times: [0; MAX_SYSCALL_NUM],
+                processed: false,
+            }
         };
         // prepare TrapContext in user space
         let trap_cx = task_control_block.get_trap_cx();
@@ -109,4 +118,16 @@ pub enum TaskStatus {
     Running,
     /// exited
     Exited,
+}
+
+
+#[derive(Clone, Copy)]
+/// Task info helper
+pub struct TaskInfoHelper {
+    /// The times that call a system call 
+    pub syscall_times: [u32; MAX_SYSCALL_NUM],
+    /// The task start time when it process at the first time
+    pub task_start_time: usize,
+    /// The flag note the task have been process
+    pub processed: bool,
 }

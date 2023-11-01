@@ -36,7 +36,9 @@ impl PageTableEntry {
     }
     /// Create an empty page table entry
     pub fn empty() -> Self {
-        PageTableEntry { bits: 0 }
+        PageTableEntry { 
+            bits: 0 
+        }
     }
     /// Get the physical page number from the page table entry
     pub fn ppn(&self) -> PhysPageNum {
@@ -82,6 +84,7 @@ impl PageTable {
     }
     /// Temporarily used to get arguments from user space.
     pub fn from_token(satp: usize) -> Self {
+        // CSR satp is storage PPN on [43, 0]
         Self {
             root_ppn: PhysPageNum::from(satp & ((1usize << 44) - 1)),
             frames: Vec::new(),
@@ -170,4 +173,14 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         start = end_va.into();
     }
     v
+}
+
+/// translate a mut pointrt T generic type with a vitral page number 
+pub fn translate_pointer_mut <T>(token: usize, ptr: *mut T) -> &'static mut T {
+    let page_table = PageTable::from_token(token);
+    let ptr = ptr as usize;
+    let va = VirtAddr::from(ptr);
+    let vpn = va.floor();
+    let ppn = page_table.translate(vpn).unwrap().ppn();
+    ppn.get_mut::<T>()
 }

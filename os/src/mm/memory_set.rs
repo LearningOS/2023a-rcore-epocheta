@@ -265,9 +265,13 @@ impl MemorySet {
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
+    /// a Iterator of Virtal Page Num which describe a continous virtal space on this logic segment
     vpn_range: VPNRange,
+    /// When the MapType is Framed, data_frames is storage the map pair of VPN and its maped FrameTracker whick storage the PPN
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
+    /// Map Type
     map_type: MapType,
+    /// Only storage U/R/W/X so that guarantee the safety
     map_perm: MapPermission,
 }
 
