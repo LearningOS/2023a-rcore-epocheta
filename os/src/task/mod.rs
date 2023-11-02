@@ -21,7 +21,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::loader::get_app_data_by_name;
+use crate::{loader::get_app_data_by_name, mm::VirtAddr};
 use alloc::sync::Arc;
 use lazy_static::*;
 pub use manager::{fetch_task, TaskManager};
@@ -35,6 +35,9 @@ pub use processor::{
     current_task, current_trap_cx, current_user_token, run_tasks, schedule, take_current_task,
     Processor,
 };
+use crate::mm::MapPermission;
+
+
 /// Suspend the current 'Running' task and run the next task in task list.
 pub fn suspend_current_and_run_next() {
     // There must be an application running.
@@ -114,4 +117,30 @@ lazy_static! {
 ///Add init process to the manager
 pub fn add_initproc() {
     add_task(INITPROC.clone());
+}
+
+/// map
+pub fn map_memory_for_task(start: VirtAddr, end: VirtAddr, port: usize) -> bool {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let memory_set = &mut inner.memory_set;
+
+    let mapped = memory_set.is_mapped(start, end);
+
+    if !start.aligned() || port & !0x7 != 0 || port & 0x7 == 0 || mapped {
+        false
+    } else {
+        let permission = MapPermission::from_bits((port << 1) as u8).unwrap() | MapPermission::U;
+        memory_set.insert_framed_area(start, end, permission);
+        true
+    }
+}
+
+/// unmap
+pub fn unmap_memory_for_task(start: VirtAddr, end: VirtAddr) -> bool {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    let memory_set = &mut inner.memory_set;
+
+    start.aligned() && memory_set.remove_framed_area(start, end)
 }
