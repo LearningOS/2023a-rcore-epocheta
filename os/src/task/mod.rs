@@ -144,3 +144,10 @@ pub fn unmap_memory_for_task(start: VirtAddr, end: VirtAddr) -> bool {
 
     start.aligned() && memory_set.remove_framed_area(start, end)
 }
+
+/// set priority
+pub fn set_priority_for_current(priority: usize) {
+    let task = current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner.stride.set_priority(priority);
+}

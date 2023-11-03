@@ -1,7 +1,7 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::TaskContext;
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{TRAP_CONTEXT_BASE, BIG_STRIDE, DEFAULT_PRIORITY};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
@@ -22,6 +22,26 @@ pub struct TaskControlBlock {
 
     /// Mutable
     inner: UPSafeCell<TaskControlBlockInner>,
+}
+
+impl PartialEq for TaskControlBlock {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
+impl Eq for TaskControlBlock {}
+
+impl PartialOrd for TaskControlBlock {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(other.inner_exclusive_access().stride.stride.cmp(&self.inner_exclusive_access().stride.stride))  
+    }
+}
+
+impl Ord for TaskControlBlock {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        other.partial_cmp(self).unwrap()        
+    }
 }
 
 impl TaskControlBlock {
@@ -68,7 +88,11 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    pub stride: StrideHelper,
 }
+
+
 
 impl TaskControlBlockInner {
     /// get the trap context
@@ -118,6 +142,7 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    stride: StrideHelper::new(),
                 })
             },
         };
@@ -191,6 +216,7 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    stride: StrideHelper::new(),
                 })
             },
         });
@@ -267,6 +293,7 @@ impl TaskControlBlock {
                         exit_code: 0,
                         heap_bottom: parent_inner.heap_bottom,
                         program_brk: parent_inner.program_brk,
+                        stride: StrideHelper::new(),
                     })
                 },
             });
@@ -300,4 +327,39 @@ pub enum TaskStatus {
     Running,
     /// exited
     Zombie,
+}
+
+
+pub struct StrideHelper {
+    pass: usize,
+    stride: u64,
+}
+
+// impl PartialOrd for StrideHelper {
+//     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+//         Some(self.stride.cmp(&other.stride))
+//     }
+// }
+// impl PartialEq for StrideHelper {
+//     fn eq(&self, _other: &Self) -> bool {
+//         false
+//     }
+// }
+
+impl StrideHelper {
+    pub fn new() -> Self {
+        StrideHelper { 
+            pass: BIG_STRIDE / DEFAULT_PRIORITY, 
+            stride: 0 
+        }
+    }
+
+    pub fn set_priority(&mut self, prio: usize) {
+        self.pass = BIG_STRIDE / prio
+    }
+
+    pub fn add_pass(&mut self) {
+        debug!("add pass {} -> {}", self.stride, self.pass);
+        self.stride += self.pass as u64
+    }
 }
